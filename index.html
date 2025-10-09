@@ -5,34 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Open UKG Pro</title>
   <script>
-    // 1) Deep link to the app (UKG custom scheme)
-    var deeplink = "https://mobileukg-dev.reyesholdings.com";
+    (function () {
+      // Prefer the custom scheme; it’s the most direct way to the app.
+      // If UKG sets up a proper Universal Link for your tenant, you can switch this to the https URL.
+      var deeplink = "ukgpro://mobileukg-dev.reyesholdings.com";
+      var appstore = "https://apps.apple.com/us/app/ukg-pro/id6445849909";
 
-    // 2) HTTPS App Store product page (this will hand off to the App Store app)
-    var appstore = "https://apps.apple.com/us/app/ukg-pro/id6445849909";
-
-    // Launch sequence: try app first, then fallback quickly
-    (function launch() {
-      // Try to open the app. If installed, iOS switches away from Safari immediately.
-      try { window.location.replace(deeplink); } catch (e) { window.location.href = deeplink; }
-
-      // If not installed, we’re still in Safari after ~600ms → go to App Store (which opens the App Store app)
-      setTimeout(function () {
-        // Prefer navigating the top context in case we’re in an iframe-capable environment
-        try {
-          if (window.top && window.top !== window) {
-            window.top.location.assign(appstore);
-            return;
-          }
-        } catch (_) {}
+      // Start the fallback, but cancel it the moment Safari loses focus or the page hides.
+      var fallbackTimer = setTimeout(function () {
         try { window.location.assign(appstore); } catch (_) { window.location.href = appstore; }
-      }, 600); // tweak 500–800ms if needed
+      }, 700); // tune 600–900ms as needed
+
+      function cancelFallback() {
+        if (fallbackTimer) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
+      }
+
+      // Cancel when the page is no longer visible or is navigating away.
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden") cancelFallback();
+      }, { passive: true });
+
+      window.addEventListener("pagehide", cancelFallback, { passive: true });
+      window.addEventListener("blur", cancelFallback, { passive: true });
+
+      // Attempt to open the app. iOS may show a confirmation prompt; that’s normal and cannot be suppressed.
+      try { window.location.replace(deeplink); } catch (_) { window.location.href = deeplink; }
     })();
   </script>
 </head>
-<body>
-  <noscript>
-    JavaScript is required to open the UKG app or redirect to its App Store page.
-  </noscript>
-</body>
+<body></body>
 </html>
