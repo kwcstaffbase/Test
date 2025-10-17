@@ -1,24 +1,69 @@
-<!DOCTYPE html><meta charset="utf-8">
+<!DOCTYPE html>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Open UKG Pro</title>
 <script>
-  // TODO: replace with UKG’s actual custom-scheme deeplink for your tenant
+  // 1) Custom scheme you expect the app to handle (you must verify this is valid)
   var deeplink = "ukgpro://config?tenant=REYES";
-  // Use itms-apps to jump straight into App Store app
+
+  // 2) App Store deep link. If 'itms-apps' is blocked in your context, fall back to https
   var appstore = "itms-apps://itunes.apple.com/app/id6445849909";
+  var appstoreHttps = "https://apps.apple.com/app/id6445849909";
 
-  var t;
-  function cancel(){ if(t){ clearTimeout(t); t=null; } }
-  addEventListener("visibilitychange", ()=>{ if(document.hidden) cancel(); });
-  addEventListener("pagehide", cancel);
-  addEventListener("blur", cancel);
+  var start = performance.now();
+  var fallbackTimer = null;
+  var hiddenCancelTimer = null;
+  var FALLBACK_MS = 1200;      // try 1000–1500ms
+  var HIDDEN_STABLE_MS = 1500; // cancel only if we stay hidden long enough
 
-  (function launch(){
-    // Start fallback first
-    t = setTimeout(function(){
-      try { top.location.assign(appstore); } catch(_) { location.href = appstore; }
-    }, 900); // 700–1200ms works well
-    // Then try to open the app
+  function toStore() {
+    try { location.href = appstore; }
+    catch(_) { location.href = appstoreHttps; }
+  }
+
+  function scheduleFallback() {
+    if (fallbackTimer) return;
+    fallbackTimer = setTimeout(function () {
+      // If we're still visible after the wait, the app didn't open: go to store.
+      if (document.visibilityState === "visible") {
+        toStore();
+      } else {
+        // Edge case: if we somehow toggled hidden and came back fast, still send to store
+        var elapsed = performance.now() - start;
+        if (elapsed < (FALLBACK_MS + 500)) toStore();
+      }
+    }, FALLBACK_MS);
+  }
+
+  // If Safari *really* backgrounds (app opened), we'll be hidden for a while.
+  // Only then cancel the fallback. Don't cancel on transient hides.
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") {
+      // Wait to see if we remain hidden; cancel only after a stable hidden window
+      hiddenCancelTimer = setTimeout(function () {
+        if (document.visibilityState === "hidden" && fallbackTimer) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
+      }, HIDDEN_STABLE_MS);
+    } else {
+      // We came back quickly -> likely failed open; ensure fallback runs soon
+      if (hiddenCancelTimer) { clearTimeout(hiddenCancelTimer); hiddenCancelTimer = null; }
+    }
+  });
+
+  // Some iOS versions fire pagehide on attempt; don't cancel immediately.
+  // If we *return* (pageshow) quickly, force the store.
+  window.addEventListener("pageshow", function () {
+    var elapsed = performance.now() - start;
+    if (elapsed < (FALLBACK_MS + 400) && !fallbackTimer) {
+      // In case something cancelled it too eagerly
+      toStore();
+    }
+  });
+
+  (function launch() {
+    scheduleFallback(); // arm first
     try { location.replace(deeplink); } catch(_) { location.href = deeplink; }
   })();
 </script>
