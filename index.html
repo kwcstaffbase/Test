@@ -1,69 +1,38 @@
 <!DOCTYPE html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Open UKG Pro</title>
-<script>
-  // 1) Custom scheme you expect the app to handle (you must verify this is valid)
-  var deeplink = "ukgpro://config?tenant=REYES";
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Open UKG Pro</title>
+  <script>
+    // 1) Deep link to the app (UKG custom scheme)
+    var deeplink = "https://mdl-cst-prod.cdn.ukg.net/ukgpro/config/?tenantConfigInfo=REYES";
 
-  // 2) App Store deep link. If 'itms-apps' is blocked in your context, fall back to https
-  var appstore = "itms-apps://itunes.apple.com/app/id6445849909";
-  var appstoreHttps = "https://apps.apple.com/app/id6445849909";
+    // 2) HTTPS App Store product page (this will hand off to the App Store app)
+    var appstore = "https://apps.apple.com/us/app/ukg-pro/id6445849909";
 
-  var start = performance.now();
-  var fallbackTimer = null;
-  var hiddenCancelTimer = null;
-  var FALLBACK_MS = 1200;      // try 1000–1500ms
-  var HIDDEN_STABLE_MS = 1500; // cancel only if we stay hidden long enough
+    // Launch sequence: try app first, then fallback quickly
+    (function launch() {
+      // Try to open the app. If installed, iOS switches away from Safari immediately.
+      try { window.location.replace(deeplink); } catch (e) { window.location.href = deeplink; }
 
-  function toStore() {
-    try { location.href = appstore; }
-    catch(_) { location.href = appstoreHttps; }
-  }
-
-  function scheduleFallback() {
-    if (fallbackTimer) return;
-    fallbackTimer = setTimeout(function () {
-      // If we're still visible after the wait, the app didn't open: go to store.
-      if (document.visibilityState === "visible") {
-        toStore();
-      } else {
-        // Edge case: if we somehow toggled hidden and came back fast, still send to store
-        var elapsed = performance.now() - start;
-        if (elapsed < (FALLBACK_MS + 500)) toStore();
-      }
-    }, FALLBACK_MS);
-  }
-
-  // If Safari *really* backgrounds (app opened), we'll be hidden for a while.
-  // Only then cancel the fallback. Don't cancel on transient hides.
-  document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "hidden") {
-      // Wait to see if we remain hidden; cancel only after a stable hidden window
-      hiddenCancelTimer = setTimeout(function () {
-        if (document.visibilityState === "hidden" && fallbackTimer) {
-          clearTimeout(fallbackTimer);
-          fallbackTimer = null;
-        }
-      }, HIDDEN_STABLE_MS);
-    } else {
-      // We came back quickly -> likely failed open; ensure fallback runs soon
-      if (hiddenCancelTimer) { clearTimeout(hiddenCancelTimer); hiddenCancelTimer = null; }
-    }
-  });
-
-  // Some iOS versions fire pagehide on attempt; don't cancel immediately.
-  // If we *return* (pageshow) quickly, force the store.
-  window.addEventListener("pageshow", function () {
-    var elapsed = performance.now() - start;
-    if (elapsed < (FALLBACK_MS + 400) && !fallbackTimer) {
-      // In case something cancelled it too eagerly
-      toStore();
-    }
-  });
-
-  (function launch() {
-    scheduleFallback(); // arm first
-    try { location.replace(deeplink); } catch(_) { location.href = deeplink; }
-  })();
-</script>
+      // If not installed, we’re still in Safari after ~600ms → go to App Store (which opens the App Store app)
+      setTimeout(function () {
+        // Prefer navigating the top context in case we’re in an iframe-capable environment
+        try {
+          if (window.top && window.top !== window) {
+            window.top.location.assign(appstore);
+            return;
+          }
+        } catch (_) {}
+        try { window.location.assign(appstore); } catch (_) { window.location.href = appstore; }
+      }, 600); // tweak 500–800ms if needed
+    })();
+  </script>
+</head>
+<body>
+  <noscript>
+    JavaScript is required to open the UKG app or redirect to its App Store page.
+  </noscript>
+</body>
+</html>
